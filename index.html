@@ -34,7 +34,7 @@
   </style>
 </head>
 <body class="bg-gray-100 font-sans">
-  <div id="loading" class="loading">Memproses data... Mohon tunggu.</div>
+  <div id="loading" class="loading">Memproses data...</div>
   <div class="container mx-auto p-4">
     <h1 class="text-3xl font-bold text-center text-blue-800 mb-6">4D Singapore Analyzer</h1>
     
@@ -81,6 +81,7 @@
   <script>
     let numbers = [];
     let dates = [];
+    let statsCache = null;
     const shioTable = {
       0: 'Tikus', 1: 'Kerbau', 2: 'Macan', 3: 'Kelinci', 4: 'Naga', 5: 'Ular',
       6: 'Kuda', 7: 'Kambing', 8: 'Monyet', 9: 'Ayam', 10: 'Anjing', 11: 'Babi'
@@ -128,8 +129,9 @@
         }
       }
 
-      numbers = [...numbers, ...newNumbers];
-      dates = [...dates, ...newDates];
+      numbers = newNumbers;
+      dates = newDates;
+      statsCache = null;
       await idbKeyval.set('historicalData', { numbers, dates });
       
       document.getElementById('numberList').innerHTML = '';
@@ -150,6 +152,7 @@
       if (/^\d{4}$/.test(input)) {
         numbers.push(parseInt(input));
         dates.push(new Date().toISOString().split('T')[0]);
+        statsCache = null;
         await idbKeyval.set('historicalData', { numbers, dates });
         document.getElementById('numberList').innerHTML += `<li>${dates[dates.length - 1]}: ${input}</li>`;
         document.getElementById('numberInput').value = '';
@@ -162,9 +165,18 @@
     function analyzeStats() {
       if (numbers.length === 0) return;
       
+      if (statsCache) {
+        document.getElementById('statsOutput').innerHTML = statsCache.stats;
+        if (window.digitChart) window.digitChart.destroy();
+        if (window.monthlyChart) window.monthlyChart.destroy();
+        window.digitChart = new Chart(document.getElementById('digitChart').getContext('2d'), statsCache.digitChart);
+        window.monthlyChart = new Chart(document.getElementById('monthlyTrendChart').getContext('2d'), statsCache.monthlyChart);
+        return;
+      }
+      
       toggleLoading(true);
       
-      const digitDist = [[], [], [], []];
+      const digitDist = Array(4).fill().map(() => Array(10).fill(0));
       let besar = 0, kecil = 0, ganjil = 0, genap = 0;
       const monthlyTrend = {};
       
@@ -173,10 +185,7 @@
         const date = new Date(dates[Math.floor(index / 3)].split('/').reverse().join('-') || '2025-01-01');
         const month = date.toLocaleString('default', { month: 'long', year: 'numeric' });
         
-        digitDist[0].push(digits[0]);
-        digitDist[1].push(digits[1]);
-        digitDist[2].push(digits[2]);
-        digitDist[3].push(digits[3]);
+        digits.forEach((digit, pos) => digitDist[pos][digit]++);
         
         const lastDigit = digits[3];
         if (lastDigit >= 5) besar++;
@@ -198,17 +207,15 @@
       `;
       document.getElementById('statsOutput').innerHTML = stats;
       
-      const digitCtx = document.getElementById('digitChart').getContext('2d');
-      if (window.digitChart) window.digitChart.destroy();
-      window.digitChart = new Chart(digitCtx, {
+      const digitChartConfig = {
         type: 'bar',
         data: {
           labels: Array(10).fill(0).map((_, i) => i),
           datasets: [
-            { label: 'AS', data: Array(10).fill(0).map((_, i) => digitDist[0].filter(d => d === i).length / numbers.length * 100), backgroundColor: '#3b82f6' },
-            { label: 'KOP', data: Array(10).fill(0).map((_, i) => digitDist[1].filter(d => d === i).length / numbers.length * 100), backgroundColor: '#ef4444' },
-            { label: 'KEPALA', data: Array(10).fill(0).map((_, i) => digitDist[2].filter(d => d === i).length / numbers.length * 100), backgroundColor: '#10b981' },
-            { label: 'EKOR', data: Array(10).fill(0).map((_, i) => digitDist[3].filter(d => d === i).length / numbers.length * 100), backgroundColor: '#f59e0b' }
+            { label: 'AS', data: digitDist[0].map(d => (d / numbers.length) * 100), backgroundColor: '#3b82f6' },
+            { label: 'KOP', data: digitDist[1].map(d => (d / numbers.length) * 100), backgroundColor: '#ef4444' },
+            { label: 'KEPALA', data: digitDist[2].map(d => (d / numbers.length) * 100), backgroundColor: '#10b981' },
+            { label: 'EKOR', data: digitDist[3].map(d => (d / numbers.length) * 100), backgroundColor: '#f59e0b' }
           ]
         },
         options: {
@@ -223,11 +230,9 @@
             }
           }
         }
-      });
+      };
       
-      const monthlyCtx = document.getElementById('monthlyTrendChart').getContext('2d');
-      if (window.monthlyChart) window.monthlyChart.destroy();
-      window.monthlyChart = new Chart(monthlyCtx, {
+      const monthlyChartConfig = {
         type: 'line',
         data: {
           labels: Object.keys(monthlyTrend),
@@ -249,8 +254,14 @@
             }
           }
         }
-      });
+      };
       
+      if (window.digitChart) window.digitChart.destroy();
+      if (window.monthlyChart) window.monthlyChart.destroy();
+      window.digitChart = new Chart(document.getElementById('digitChart').getContext('2d'), digitChartConfig);
+      window.monthlyChart = new Chart(document.getElementById('monthlyTrendChart').getContext('2d'), monthlyChartConfig);
+      
+      statsCache = { stats, digitChart: digitChartConfig, monthlyChart: monthlyChartConfig };
       toggleLoading(false);
     }
     
@@ -272,27 +283,28 @@
     
     let model;
     async function trainModel() {
-      if (numbers.length < 90) {
-        alert('Masukkan minimal 90 angka untuk melatih model!');
+      const minData = Math.max(30, numbers.length); // Sesuaikan dengan data yang ada
+      if (numbers.length < 10) {
+        alert('Masukkan minimal 10 angka untuk melatih model!');
         return;
       }
 
       toggleLoading(true);
       const worker = new Worker('/trainWorker.js');
-      worker.postMessage({ numbers });
-      document.getElementById('predictionOutput').innerHTML = 'Melatih model... Mohon tunggu.';
+      worker.postMessage({ numbers, minData });
+      document.getElementById('predictionOutput').innerHTML = 'Melatih model...';
 
       worker.onmessage = async (event) => {
         if (event.data.status === 'success') {
           model = await tf.loadLayersModel('indexeddb://4d-model');
-          document.getElementById('predictionOutput').innerHTML = 'Model telah dilatih dan disimpan!';
+          document.getElementById('predictionOutput').innerHTML = 'Model telah dilatih!';
           toggleLoading(false);
         }
       };
 
       worker.onerror = (error) => {
         console.error('Error in Web Worker:', error);
-        document.getElementById('predictionOutput').innerHTML = 'Gagal melatih model. Coba lagi.';
+        document.getElementById('predictionOutput').innerHTML = 'Gagal melatih model.';
         toggleLoading(false);
       };
     }
@@ -308,11 +320,12 @@
       }
       
       toggleLoading(true);
-      const lastNumbers = numbers.slice(-90, -10).map(n => {
+      const windowSize = Math.min(numbers.length, 30); // Sesuaikan jendela dengan data yang tersedia
+      const lastNumbers = numbers.slice(-windowSize).map(n => {
         const digits = n.toString().padStart(4, '0').split('').map(Number);
         return digits.map(d => d / 9);
       });
-      const input = tf.tensor2d([lastNumbers.flat()], [1, 320]); // 80 * 4 digits
+      const input = tf.tensor2d([lastNumbers.flat()], [1, windowSize * 4]);
       const prediction = model.predict(input);
       const predictedDigits = (await prediction.data()).map(d => Math.round(d * 9));
       const predictedNumber = predictedDigits.map(d => d.toString()).join('');
