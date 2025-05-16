@@ -11,6 +11,7 @@ const { ExpirationPlugin } = workbox.expiration;
 precacheAndRoute([
   { url: '/', revision: '1' },
   { url: '/index.html', revision: '1' },
+  { url: '/trainWorker.js', revision: '1' }, // Tambahkan trainWorker.js
   { url: '/icon.png', revision: '1' },
   { url: '/manifest.json', revision: '1' }
 ]);
@@ -31,4 +32,4 @@ registerRoute(
     cacheName: 'dynamic-cache',
     plugins: [new ExpirationPlugin({ maxEntries: 50, maxAgeSeconds: 30 * 24 * 60 * 60 })]
   })
-); 
+);
