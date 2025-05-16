@@ -13,7 +13,8 @@ precacheAndRoute([
   { url: '/index.html', revision: '1' },
   { url: '/trainWorker.js', revision: '1' },
   { url: '/data/historical_data.csv', revision: '1' },
-  { url: '/icon.png', revision: '1' },
+  { url: '/icon-192x192.png', revision: '1' },
+  { url: '/icon-512x512.png', revision: '1' },
   { url: '/manifest.json', revision: '1' }
 ]);
 
