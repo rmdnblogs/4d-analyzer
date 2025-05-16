@@ -3,41 +3,36 @@ importScripts('https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.
 self.onmessage = async (event) => {
   const { numbers } = event.data;
 
-  // Buat model Transformer sederhana
   const model = tf.sequential();
-  model.add(tf.layers.embedding({ inputDim: 10000, outputDim: 64, inputLength: 40 }));
-  model.add(tf.layers.transformerEncoder({ numHeads: 2, headSize: 32, ffDim: 64, dropout: 0.1 }));
+  model.add(tf.layers.embedding({ inputDim: 10000, outputDim: 128, inputLength: 320 }));
+  model.add(tf.layers.transformerEncoder({ numHeads: 4, headSize: 32, ffDim: 128, dropout: 0.1 }));
   model.add(tf.layers.globalAveragePooling1d());
-  model.add(tf.layers.dense({ units: 64, activation: 'relu' }));
+  model.add(tf.layers.dense({ units: 128, activation: 'relu' }));
   model.add(tf.layers.dropout({ rate: 0.2 }));
   model.add(tf.layers.dense({ units: 4, activation: 'linear' }));
   model.compile({ optimizer: 'adam', loss: 'meanSquaredError' });
 
-  // Normalisasi data
   const normalized = numbers.map(n => {
     const digits = n.toString().padStart(4, '0').split('').map(Number);
     return digits.map(d => d / 9);
   });
   const xs = [], ys = [];
-  for (let i = 0; i < normalized.length - 30; i += 3) {
-    xs.push([...normalized.slice(i, i + 10).flat(), ...normalized.slice(i + 10, i + 20).flat(), ...normalized.slice(i + 20, i + 30).flat()]);
-    ys.push(normalized[i + 30]);
+  for (let i = 0; i < normalized.length - 80; i += 3) {
+    xs.push(normalized.slice(i, i + 80).flat());
+    ys.push(normalized[i + 80]);
   }
 
-  const xsTensor = tf.tensor2d(xs, [xs.length, 120]); // 30 * 4 digits
+  const xsTensor = tf.tensor2d(xs, [xs.length, 320]); // 80 * 4 digits
   const ysTensor = tf.tensor2d(ys, [ys.length, 4]);
 
-  // Latih model
   await model.fit(xsTensor, ysTensor, {
-    epochs: 50,
+    epochs: 100,
     batchSize: 64,
-    shuffle: true
+    shuffle: true,
+    validationSplit: 0.2
   });
 
-  // Simpan model ke IndexedDB
   await model.save('indexeddb://4d-model');
-
-  // Bersihkan tensor
   xsTensor.dispose();
   ysTensor.dispose();
 

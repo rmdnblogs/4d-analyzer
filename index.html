@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>4D Singapore Advanced Analyzer</title>
+  <title>4D Singapore Analyzer</title>
   <meta name="description" content="PWA untuk analisis statistik dan prediksi 4D Singapore">
   <meta name="theme-color" content="#1e40af">
   <link rel="manifest" href="/manifest.json">
@@ -28,15 +28,15 @@
     .loading.visible {
       display: block;
     }
-    .hidden {
-      display: none;
+    canvas {
+      max-height: 300px;
     }
   </style>
 </head>
 <body class="bg-gray-100 font-sans">
   <div id="loading" class="loading">Memproses data... Mohon tunggu.</div>
   <div class="container mx-auto p-4">
-    <h1 class="text-3xl font-bold text-center text-blue-800 mb-6">4D Singapore Advanced Analyzer</h1>
+    <h1 class="text-3xl font-bold text-center text-blue-800 mb-6">4D Singapore Analyzer</h1>
     
     <!-- Input Data -->
     <div class="bg-white p-6 rounded-lg shadow-md mb-6">
@@ -56,21 +56,25 @@
     
     <!-- Analisis Statistik -->
     <div class="bg-white p-6 rounded-lg shadow-md mb-6">
-      <h2 class="text-xl font-semibold mb-4">Hasil Analisis Statistik</h2>
+      <h2 class="text-xl font-semibold mb-4">Hasil Analisis</h2>
       <button id="exportBtn" onclick="exportData()" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 mb-4">Ekspor Data</button>
-      <p id="statsOutput" class="mb-4"></p>
-      <canvas id="digitChart" class="w-full h-64 mb-4"></canvas>
-      <canvas id="shioChart" class="w-full h-64 mb-4"></canvas>
-      <canvas id="monthlyTrendChart" class="w-full h-64 mb-4"></canvas>
-      <canvas id="colokNagaChart" class="w-full h-64"></canvas>
+      <p id="statsOutput" class="mb-4 text-lg"></p>
+      <div class="mb-6">
+        <h3 class="text-lg font-semibold mb-2">Distribusi Digit</h3>
+        <canvas id="digitChart" class="w-full"></canvas>
+      </div>
+      <div>
+        <h3 class="text-lg font-semibold mb-2">Tren Bulanan (Besar/Kecil)</h3>
+        <canvas id="monthlyTrendChart" class="w-full"></canvas>
+      </div>
     </div>
     
     <!-- Prediksi ML -->
     <div class="bg-white p-6 rounded-lg shadow-md">
-      <h2 class="text-xl font-semibold mb-4">Prediksi Machine Learning</h2>
+      <h2 class="text-xl font-semibold mb-4">Prediksi Angka</h2>
       <button onclick="trainModel()" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 mb-4">Latih Model</button>
-      <button onclick="predictNumber()" class="bg-purple-500 text-white px-4 py-2 rounded hover:bg-purple-600 mb-4">Prediksi Angka</button>
-      <p id="predictionOutput"></p>
+      <button onclick="predictNumber()" class="bg-purple-500 text-white px-4 py-2 rounded hover:bg-purple-600 mb-4">Prediksi</button>
+      <p id="predictionOutput" class="text-lg"></p>
     </div>
   </div>
 
@@ -91,10 +95,10 @@
       numbers = storedData.numbers;
       dates = storedData.dates;
       document.getElementById('numberList').innerHTML = '';
-      numbers.forEach((num, index) => {
-        const date = dates[index] || 'N/A';
-        document.getElementById('numberList').innerHTML += `<li>${date}: ${num.toString().padStart(4, '0')}</li>`;
-      });
+      for (let i = 0; i < numbers.length; i += 3) {
+        const date = dates[Math.floor(i / 3)] || 'N/A';
+        document.getElementById('numberList').innerHTML += `<li>${date}: ${numbers.slice(i, i + 3).map(n => n.toString().padStart(4, '0')).join(', ')}</li>`;
+      }
       if (numbers.length > 0) analyzeStats();
     }
     loadNumbers();
@@ -112,12 +116,15 @@
       const lines = text.split('\n').filter(line => line.trim());
       const newNumbers = [];
       const newDates = [];
+      let errorCount = 0;
       
       for (let i = 1; i < lines.length; i++) {
         const [date, first, second, third] = lines[i].split(',').map(s => s.trim());
         if (date && first && second && third && /^\d{2}\/\d{2}\/\d{4}$/.test(date) && /^\d{4}$/.test(first) && /^\d{4}$/.test(second) && /^\d{4}$/.test(third)) {
           newDates.push(date);
           newNumbers.push(parseInt(first), parseInt(second), parseInt(third));
+        } else {
+          errorCount++;
         }
       }
 
@@ -132,6 +139,9 @@
       }
       
       toggleLoading(false);
+      if (errorCount > 0) {
+        alert(`${errorCount} baris gagal diimpor karena format salah. Pastikan tanggal dalam format DD/MM/YYYY dan semua angka adalah 4 digit.`);
+      }
       analyzeStats();
     }
     
@@ -154,67 +164,43 @@
       
       toggleLoading(true);
       
-      const digitDist = [[], [], [], []]; // AS, KOP, KEPALA, EKOR
-      const shioCount = Array(12).fill(0);
-      let besar = 0, kecil = 0, ganjil = 0, genap = 0, tengah = 0, tepi = 0;
+      const digitDist = [[], [], [], []];
+      let besar = 0, kecil = 0, ganjil = 0, genap = 0;
       const monthlyTrend = {};
-      const colokNagaCombinations = new Map();
       
       numbers.forEach((num, index) => {
         const digits = num.toString().padStart(4, '0').split('').map(Number);
-        const date = new Date(dates[Math.floor(index / 3)] || '2025-01-01');
+        const date = new Date(dates[Math.floor(index / 3)].split('/').reverse().join('-') || '2025-01-01');
         const month = date.toLocaleString('default', { month: 'long', year: 'numeric' });
         
-        // Distribusi digit
         digitDist[0].push(digits[0]);
         digitDist[1].push(digits[1]);
         digitDist[2].push(digits[2]);
         digitDist[3].push(digits[3]);
         
-        // Besar/Kecil, Ganjil/Genap, Tengah/Tepi (EKOR)
         const lastDigit = digits[3];
         if (lastDigit >= 5) besar++;
         else kecil++;
         if (lastDigit % 2 === 0) genap++;
         else ganjil++;
-        const lastTwo = parseInt(digits.slice(2).join(''));
-        if (lastTwo >= 25 && lastTwo <= 74) tengah++;
-        else tepi++;
         
-        // Shio
-        const shioIndex = lastTwo % 12;
-        shioCount[shioIndex]++;
-        
-        // Tren bulanan (Besar/Kecil per bulan)
         monthlyTrend[month] = monthlyTrend[month] || { besar: 0, kecil: 0 };
         if (lastDigit >= 5) monthlyTrend[month].besar++;
         else monthlyTrend[month].kecil++;
-        
-        // Colok Naga (semua kombinasi 3 digit)
-        for (let i = 0; i < 4; i++) {
-          for (let j = i + 1; j < 4; j++) {
-            for (let k = j + 1; k < 4; k++) {
-              const combo = [digits[i], digits[j], digits[k]].sort().join('');
-              colokNagaCombinations.set(combo, (colokNagaCombinations.get(combo) || 0) + 1);
-            }
-          }
-        }
       });
       
       const stats = `
-        Total Data: ${numbers.length}<br>
-        Besar (5-9): ${((besar / numbers.length) * 100).toFixed(2)}%<br>
-        Kecil (0-4): ${((kecil / numbers.length) * 100).toFixed(2)}%<br>
-        Ganjil: ${((ganjil / numbers.length) * 100).toFixed(2)}%<br>
-        Genap: ${((genap / numbers.length) * 100).toFixed(2)}%<br>
-        Tengah (25-74): ${((tengah / numbers.length) * 100).toFixed(2)}%<br>
-        Tepi (00-24, 75-99): ${((tepi / numbers.length) * 100).toFixed(2)}%
+        Total Angka: ${numbers.length}<br>
+        Besar (5-9): ${((besar / numbers.length) * 100).toFixed(1)}%<br>
+        Kecil (0-4): ${((kecil / numbers.length) * 100).toFixed(1)}%<br>
+        Ganjil: ${((ganjil / numbers.length) * 100).toFixed(1)}%<br>
+        Genap: ${((genap / numbers.length) * 100).toFixed(1)}%
       `;
       document.getElementById('statsOutput').innerHTML = stats;
       
-      // Grafik distribusi digit
       const digitCtx = document.getElementById('digitChart').getContext('2d');
-      new Chart(digitCtx, {
+      if (window.digitChart) window.digitChart.destroy();
+      window.digitChart = new Chart(digitCtx, {
         type: 'bar',
         data: {
           labels: Array(10).fill(0).map((_, i) => i),
@@ -225,23 +211,23 @@
             { label: 'EKOR', data: Array(10).fill(0).map((_, i) => digitDist[3].filter(d => d === i).length / numbers.length * 100), backgroundColor: '#f59e0b' }
           ]
         },
-        options: { scales: { y: { beginAtZero: true, max: 100, title: { display: true, text: 'Persentase (%)' } } } }
+        options: {
+          scales: {
+            y: { beginAtZero: true, max: 100, title: { display: true, text: 'Persentase (%)' } }
+          },
+          plugins: {
+            tooltip: {
+              callbacks: {
+                label: (context) => `${context.dataset.label}: ${context.parsed.y.toFixed(1)}%`
+              }
+            }
+          }
+        }
       });
       
-      // Grafik Shio
-      const shioCtx = document.getElementById('shioChart').getContext('2d');
-      new Chart(shioCtx, {
-        type: 'bar',
-        data: {
-          labels: Object.values(shioTable),
-          datasets: [{ label: 'Distribusi Shio (%)', data: shioCount.map(c => c / numbers.length * 100), backgroundColor: '#8b5cf6' }]
-        },
-        options: { scales: { y: { beginAtZero: true, max: 100, title: { display: true, text: 'Persentase (%)' } } } }
-      });
-      
-      // Grafik tren bulanan
       const monthlyCtx = document.getElementById('monthlyTrendChart').getContext('2d');
-      new Chart(monthlyCtx, {
+      if (window.monthlyChart) window.monthlyChart.destroy();
+      window.monthlyChart = new Chart(monthlyCtx, {
         type: 'line',
         data: {
           labels: Object.keys(monthlyTrend),
@@ -250,28 +236,24 @@
             { label: 'Kecil (%)', data: Object.values(monthlyTrend).map(d => (d.kecil / (d.besar + d.kecil)) * 100), borderColor: '#ef4444', fill: false }
           ]
         },
-        options: { scales: { y: { beginAtZero: true, max: 100, title: { display: true, text: 'Persentase (%)' } } } }
-      });
-      
-      // Grafik Colok Naga
-      const colokNagaCtx = document.getElementById('colokNagaChart').getContext('2d');
-      new Chart(colokNagaCtx, {
-        type: 'bar',
-        data: {
-          labels: Array.from(colokNagaCombinations.keys()),
-          datasets: [{
-            label: 'Frekuensi Colok Naga',
-            data: Array.from(colokNagaCombinations.values()),
-            backgroundColor: '#10b981'
-          }]
-        },
-        options: { scales: { y: { beginAtZero: true, title: { display: true, text: 'Frekuensi' } } } }
+        options: {
+          scales: {
+            y: { beginAtZero: true, max: 100, title: { display: true, text: 'Persentase (%)' } },
+            x: { title: { display: true, text: 'Bulan' } }
+          },
+          plugins: {
+            tooltip: {
+              callbacks: {
+                label: (context) => `${context.dataset.label}: ${context.parsed.y.toFixed(1)}%`
+              }
+            }
+          }
+        }
       });
       
       toggleLoading(false);
     }
     
-    // Ekspor data
     function exportData() {
       const csvContent = [
         'date,first,second,third',
@@ -288,11 +270,10 @@
       window.URL.revokeObjectURL(url);
     }
     
-    // Model Transformer (Menggunakan Web Worker)
     let model;
     async function trainModel() {
-      if (numbers.length < 20) {
-        alert('Masukkan minimal 20 data untuk melatih model!');
+      if (numbers.length < 90) {
+        alert('Masukkan minimal 90 angka untuk melatih model!');
         return;
       }
 
@@ -316,7 +297,6 @@
       };
     }
     
-    // Prediksi angka
     async function predictNumber() {
       if (!model) {
         try {
@@ -328,11 +308,11 @@
       }
       
       toggleLoading(true);
-      const lastTen = numbers.slice(-30, -10).map(n => {
+      const lastNumbers = numbers.slice(-90, -10).map(n => {
         const digits = n.toString().padStart(4, '0').split('').map(Number);
         return digits.map(d => d / 9);
       });
-      const input = tf.tensor2d([lastTen.flat()], [1, 40]); // 10 * 4 digits
+      const input = tf.tensor2d([lastNumbers.flat()], [1, 320]); // 80 * 4 digits
       const prediction = model.predict(input);
       const predictedDigits = (await prediction.data()).map(d => Math.round(d * 9));
       const predictedNumber = predictedDigits.map(d => d.toString()).join('');
@@ -341,9 +321,9 @@
       const shio = shioTable[lastTwo];
       
       document.getElementById('predictionOutput').innerHTML = `
-        Prediksi Angka: ${predictedNumber}<br>
+        Prediksi Angka: <span class="font-bold">${predictedNumber}</span><br>
         Shio: ${shio}<br>
-        Kategori EKOR: ${predictedDigits[3] >= 5 ? 'Besar' : 'Kecil'}, ${predictedDigits[3] % 2 === 0 ? 'Genap' : 'Ganjil'}
+        EKOR: ${predictedDigits[3] >= 5 ? 'Besar' : 'Kecil'}, ${predictedDigits[3] % 2 === 0 ? 'Genap' : 'Ganjil'}
       `;
       
       input.dispose();
@@ -351,13 +331,11 @@
       toggleLoading(false);
     }
     
-    // Service Worker dengan Workbox
     if ('serviceWorker' in navigator) {
       const wb = new Workbox('/sw.js');
       wb.register();
     }
     
-    // Notifikasi pengingat undian
     if (Notification.permission === 'granted') {
       scheduleNotifications();
     } else if (Notification.permission !== 'denied') {
