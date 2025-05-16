@@ -11,7 +11,8 @@ const { ExpirationPlugin } = workbox.expiration;
 precacheAndRoute([
   { url: '/', revision: '1' },
   { url: '/index.html', revision: '1' },
-  { url: '/trainWorker.js', revision: '1' }, // Tambahkan trainWorker.js
+  { url: '/trainWorker.js', revision: '1' },
+  { url: '/data/historical_data.csv', revision: '1' },
   { url: '/icon.png', revision: '1' },
   { url: '/manifest.json', revision: '1' }
 ]);
