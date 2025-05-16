@@ -3,35 +3,39 @@ importScripts('https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.
 self.onmessage = async (event) => {
   const { numbers } = event.data;
 
-  // Buat model Transformer sederhana
+  // Buat model Transformer yang lebih fleksibel
   const model = tf.sequential();
-  model.add(tf.layers.embedding({ inputDim: 10000, outputDim: 64, inputLength: 40 }));
-  model.add(tf.layers.transformerEncoder({ numHeads: 2, headSize: 32, ffDim: 64, dropout: 0.1 }));
+  model.add(tf.layers.embedding({ inputDim: 10000, outputDim: 128, inputLength: 120 }));
+  model.add(tf.layers.transformerEncoder({ numHeads: 4, headSize: 32, ffDim: 128, dropout: 0.1 }));
   model.add(tf.layers.globalAveragePooling1d());
-  model.add(tf.layers.dense({ units: 64, activation: 'relu' }));
+  model.add(tf.layers.dense({ units: 128, activation: 'relu' }));
   model.add(tf.layers.dropout({ rate: 0.2 }));
   model.add(tf.layers.dense({ units: 4, activation: 'linear' }));
   model.compile({ optimizer: 'adam', loss: 'meanSquaredError' });
 
-  // Normalisasi data
+  // Normalisasi data dengan jendela lebih besar
   const normalized = numbers.map(n => {
     const digits = n.toString().padStart(4, '0').split('').map(Number);
     return digits.map(d => d / 9);
   });
   const xs = [], ys = [];
-  for (let i = 0; i < normalized.length - 30; i += 3) {
-    xs.push([...normalized.slice(i, i + 10).flat(), ...normalized.slice(i + 10, i + 20).flat(), ...normalized.slice(i + 20, i + 30).flat()]);
-    ys.push(normalized[i + 30]);
+  for (let i = 0; i < normalized.length - 90; i += 3) {
+    xs.push([...normalized.slice(i, i + 30).flat(), ...normalized.slice(i + 30, i + 60).flat(), ...normalized.slice(i + 60, i + 90).flat()]);
+    ys.push(normalized[i + 90]);
   }
 
-  const xsTensor = tf.tensor2d(xs, [xs.length, 120]); // 30 * 4 digits
+  const xsTensor = tf.tensor2d(xs, [xs.length, 360]); // 90 * 4 digits
   const ysTensor = tf.tensor2d(ys, [ys.length, 4]);
 
-  // Latih model
+  // Latih model dengan batch dan validasi
   await model.fit(xsTensor, ysTensor, {
-    epochs: 50,
+    epochs: 100,
     batchSize: 64,
-    shuffle: true
+    shuffle: true,
+    validationSplit: 0.2,
+    callbacks: {
+      onEpochEnd: (epoch, log) => console.log(`Epoch ${epoch}: loss = ${log.loss}, val_loss = ${log.val_loss}`)
+    }
   });
 
   // Simpan model ke IndexedDB
