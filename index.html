@@ -1,388 +1,163 @@
 <!DOCTYPE html>
-<html lang="id">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>4D Singapore Advanced Analyzer</title>
-  <meta name="description" content="PWA untuk analisis statistik dan prediksi 4D Singapore">
-  <meta name="theme-color" content="#1e40af">
-  <link rel="manifest" href="/manifest.json">
-  <link rel="icon" href="/icon.png">
+  <title>4D Analyzer</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <script src="https://unpkg.com/idb-keyval@6.2.0/dist/umd.js"></script>
-  <script src="https://unpkg.com/workbox-window@6.5.4/build/workbox-window.prod.umd.js"></script>
-  <style>
-    .loading {
-      display: none;
-      position: fixed;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      background: rgba(0, 0, 0, 0.7);
-      color: white;
-      padding: 20px;
-      border-radius: 8px;
-    }
-    .loading.visible {
-      display: block;
-    }
-    .hidden {
-      display: none;
-    }
-  </style>
 </head>
-<body class="bg-gray-100 font-sans">
-  <div id="loading" class="loading">Memproses data... Mohon tunggu.</div>
-  <div class="container mx-auto p-4">
-    <h1 class="text-3xl font-bold text-center text-blue-800 mb-6">4D Singapore Advanced Analyzer</h1>
-    
-    <!-- Input Data -->
-    <div class="bg-white p-6 rounded-lg shadow-md mb-6">
-      <h2 class="text-xl font-semibold mb-4">Masukkan Data Historis</h2>
-      <div class="mb-4">
-        <label class="block mb-2">Impor dari CSV:</label>
-        <input id="csvInput" type="file" accept=".csv" class="mb-2">
-        <button onclick="importCSV()" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">Impor</button>
+<body class="bg-gray-100 p-4">
+  <div id="loading" class="hidden fixed inset-0 bg-gray-500 bg-opacity-50 flex items-center justify-center">
+    <p class="text-white text-xl">Memproses data...</p>
+  </div>
+  
+  <header class="text-center mb-6">
+    <h1 class="text-3xl font-bold text-blue-800">4D Singapore Analyzer</h1>
+  </header>
+
+  <section class="max-w-4xl mx-auto bg-white p-6 rounded-lg shadow-md mb-6">
+    <h2 class="text-xl font-semibold mb-4">Masukkan Data Historis</h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div>
+        <label class="block mb-2 font-medium">Impor dari CSV:</label>
+        <input type="file" id="csvFile" accept=".csv" class="border p-2 w-full">
+        <button onclick="importCSV()" class="mt-2 bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">Impor</button>
       </div>
       <div>
-        <label class="block mb-2">Masukkan Manual (4 Digit):</label>
-        <input id="numberInput" type="text" placeholder="Masukkan 4 digit (contoh: 4321)" class="w-full p-2 border rounded mb-4">
-        <button onclick="addNumber()" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">Tambah</button>
+        <label class="block mb-2 font-medium">Masukkan Manual (4 Digit):</label>
+        <input type="number" id="manualInput" maxlength="4" class="border p-2 w-full" placeholder="1234">
+        <button onclick="addManual()" class="mt-2 bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">Tambah</button>
       </div>
-      <ul id="numberList" class="mt-4 max-h-60 overflow-y-auto"></ul>
     </div>
-    
-    <!-- Analisis Statistik -->
-    <div class="bg-white p-6 rounded-lg shadow-md mb-6">
-      <h2 class="text-xl font-semibold mb-4">Hasil Analisis Statistik</h2>
-      <button id="exportBtn" onclick="exportData()" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 mb-4">Ekspor Data</button>
-      <p id="statsOutput" class="mb-4"></p>
-      <canvas id="digitChart" class="w-full h-64 mb-4"></canvas>
-      <canvas id="shioChart" class="w-full h-64 mb-4"></canvas>
-      <canvas id="monthlyTrendChart" class="w-full h-64 mb-4"></canvas>
-      <canvas id="colokNagaChart" class="w-full h-64"></canvas>
+    <p id="dataCount" class="mt-4 text-gray-700"></p>
+  </section>
+
+  <section class="max-w-4xl mx-auto bg-white p-6 rounded-lg shadow-md mb-6">
+    <h2 class="text-xl font-semibold mb-4">Hasil Analisis</h2>
+    <button onclick="exportData()" class="mb-4 bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600">Ekspor Data</button>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div>
+        <h3 class="font-medium mb-2">Distribusi Digit</h3>
+        <canvas id="digitChart"></canvas>
+      </div>
+      <div>
+        <h3 class="font-medium mb-2">Tren Bulanan (Besar/Kecil)</h3>
+        <canvas id="monthlyTrendChart"></canvas>
+      </div>
     </div>
-    
-    <!-- Prediksi ML -->
-    <div class="bg-white p-6 rounded-lg shadow-md">
-      <h2 class="text-xl font-semibold mb-4">Prediksi Machine Learning</h2>
-      <button onclick="trainModel()" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 mb-4">Latih Model</button>
-      <button onclick="predictNumber()" class="bg-purple-500 text-white px-4 py-2 rounded hover:bg-purple-600 mb-4">Prediksi Angka</button>
-      <p id="predictionOutput"></p>
-    </div>
-  </div>
+    <p id="statsOutput" class="mt-4 text-gray-700"></p>
+  </section>
+
+  <section class="max-w-4xl mx-auto bg-white p-6 rounded-lg shadow-md">
+    <h2 class="text-xl font-semibold mb-4">Prediksi Angka</h2>
+    <button onclick="trainModel()" class="bg-purple-500 text-white px-4 py-2 rounded hover:bg-purple-600 mr-2">Latih Model</button>
+    <button onclick="predict()" class="bg-purple-500 text-white px-4 py-2 rounded hover:bg-purple-600">Prediksi</button>
+    <p id="predictionOutput" class="mt-4 text-gray-700"></p>
+  </section>
 
   <script>
     let numbers = [];
     let dates = [];
-    const shioTable = {
-      0: 'Tikus', 1: 'Kerbau', 2: 'Macan', 3: 'Kelinci', 4: 'Naga', 5: 'Ular',
-      6: 'Kuda', 7: 'Kambing', 8: 'Monyet', 9: 'Ayam', 10: 'Anjing', 11: 'Babi'
-    };
-    
+    let statsCache = null;
+
     function toggleLoading(show) {
-      document.getElementById('loading').classList.toggle('visible', show);
+      document.getElementById('loading').classList.toggle('hidden', !show);
     }
-    
-    async function loadNumbers() {
-      const storedData = (await idbKeyval.get('historicalData')) || { numbers: [], dates: [] };
-      numbers = storedData.numbers;
-      dates = storedData.dates;
-      document.getElementById('numberList').innerHTML = '';
-      numbers.forEach((num, index) => {
-        const date = dates[index] || 'N/A';
-        document.getElementById('numberList').innerHTML += `<li>${date}: ${num.toString().padStart(4, '0')}</li>`;
-      });
-      if (numbers.length > 0) analyzeStats();
-    }
-    loadNumbers();
-    
-    async function importCSV() {
-      const fileInput = document.getElementById('csvInput');
-      const file = fileInput.files[0];
-      if (!file) {
-        alert('Pilih file CSV terlebih dahulu!');
-        return;
-      }
 
-      toggleLoading(true);
-      const text = await file.text();
-      const lines = text.split('\n').filter(line => line.trim());
-      const newNumbers = [];
-      const newDates = [];
-      
-      for (let i = 1; i < lines.length; i++) {
-        const [date, first, second, third] = lines[i].split(',').map(s => s.trim());
-        if (date && first && second && third && /^\d{2}\/\d{2}\/\d{4}$/.test(date) && /^\d{4}$/.test(first) && /^\d{4}$/.test(second) && /^\d{4}$/.test(third)) {
-          newDates.push(date);
-          newNumbers.push(parseInt(first), parseInt(second), parseInt(third));
-        }
-      }
-
-      numbers = [...numbers, ...newNumbers];
-      dates = [...dates, ...newDates];
-      await idbKeyval.set('historicalData', { numbers, dates });
-      
-      document.getElementById('numberList').innerHTML = '';
-      for (let i = 0; i < numbers.length; i += 3) {
-        const date = dates[Math.floor(i / 3)] || 'N/A';
-        document.getElementById('numberList').innerHTML += `<li>${date}: ${numbers.slice(i, i + 3).map(n => n.toString().padStart(4, '0')).join(', ')}</li>`;
-      }
-      
-      toggleLoading(false);
-      analyzeStats();
-    }
-    
-    async function addNumber() {
-      const input = document.getElementById('numberInput').value;
-      if (/^\d{4}$/.test(input)) {
-        numbers.push(parseInt(input));
-        dates.push(new Date().toISOString().split('T')[0]);
-        await idbKeyval.set('historicalData', { numbers, dates });
-        document.getElementById('numberList').innerHTML += `<li>${dates[dates.length - 1]}: ${input}</li>`;
-        document.getElementById('numberInput').value = '';
-        analyzeStats();
-      } else {
-        alert('Masukkan 4 digit angka!');
-      }
-    }
-    
     function analyzeStats() {
       if (numbers.length === 0) return;
       
+      if (statsCache && statsCache.numbersLength === numbers.length) {
+        document.getElementById('statsOutput').innerHTML = statsCache.stats;
+        if (window.digitChart) window.digitChart.data = statsCache.digitChart.data;
+        if (window.monthlyChart) window.monthlyChart.data = statsCache.monthlyChart.data;
+        window.digitChart.update();
+        window.monthlyChart.update();
+        return;
+      }
+      
       toggleLoading(true);
       
-      const digitDist = [[], [], [], []]; // AS, KOP, KEPALA, EKOR
-      const shioCount = Array(12).fill(0);
-      let besar = 0, kecil = 0, ganjil = 0, genap = 0, tengah = 0, tepi = 0;
+      const digitDist = Array(4).fill().map(() => Array(10).fill(0));
+      let besar = 0, kecil = 0, ganjil = 0, genap = 0;
       const monthlyTrend = {};
-      const colokNagaCombinations = new Map();
       
       numbers.forEach((num, index) => {
         const digits = num.toString().padStart(4, '0').split('').map(Number);
-        const date = new Date(dates[Math.floor(index / 3)] || '2025-01-01');
+        const date = new Date(dates[Math.floor(index / 3)].split('/').reverse().join('-') || '2025-01-01');
         const month = date.toLocaleString('default', { month: 'long', year: 'numeric' });
         
-        // Distribusi digit
-        digitDist[0].push(digits[0]);
-        digitDist[1].push(digits[1]);
-        digitDist[2].push(digits[2]);
-        digitDist[3].push(digits[3]);
+        digits.forEach((digit, pos) => digitDist[pos][digit]++);
         
-        // Besar/Kecil, Ganjil/Genap, Tengah/Tepi (EKOR)
         const lastDigit = digits[3];
         if (lastDigit >= 5) besar++;
         else kecil++;
         if (lastDigit % 2 === 0) genap++;
         else ganjil++;
-        const lastTwo = parseInt(digits.slice(2).join(''));
-        if (lastTwo >= 25 && lastTwo <= 74) tengah++;
-        else tepi++;
         
-        // Shio
-        const shioIndex = lastTwo % 12;
-        shioCount[shioIndex]++;
-        
-        // Tren bulanan (Besar/Kecil per bulan)
         monthlyTrend[month] = monthlyTrend[month] || { besar: 0, kecil: 0 };
         if (lastDigit >= 5) monthlyTrend[month].besar++;
         else monthlyTrend[month].kecil++;
-        
-        // Colok Naga (semua kombinasi 3 digit)
-        for (let i = 0; i < 4; i++) {
-          for (let j = i + 1; j < 4; j++) {
-            for (let k = j + 1; k < 4; k++) {
-              const combo = [digits[i], digits[j], digits[k]].sort().join('');
-              colokNagaCombinations.set(combo, (colokNagaCombinations.get(combo) || 0) + 1);
-            }
-          }
-        }
       });
       
+      const totalEntries = numbers.length;
       const stats = `
-        Total Data: ${numbers.length}<br>
-        Besar (5-9): ${((besar / numbers.length) * 100).toFixed(2)}%<br>
-        Kecil (0-4): ${((kecil / numbers.length) * 100).toFixed(2)}%<br>
-        Ganjil: ${((ganjil / numbers.length) * 100).toFixed(2)}%<br>
-        Genap: ${((genap / numbers.length) * 100).toFixed(2)}%<br>
-        Tengah (25-74): ${((tengah / numbers.length) * 100).toFixed(2)}%<br>
-        Tepi (00-24, 75-99): ${((tepi / numbers.length) * 100).toFixed(2)}%
+        Total Angka: ${totalEntries}<br>
+        Besar (5-9): ${((besar / totalEntries) * 100).toFixed(1)}%<br>
+        Kecil (0-4): ${((kecil / totalEntries) * 100).toFixed(1)}%<br>
+        Ganjil: ${((ganjil / totalEntries) * 100).toFixed(1)}%<br>
+        Genap: ${((genap / totalEntries) * 100).toFixed(1)}%
       `;
       document.getElementById('statsOutput').innerHTML = stats;
       
-      // Grafik distribusi digit
-      const digitCtx = document.getElementById('digitChart').getContext('2d');
-      new Chart(digitCtx, {
-        type: 'bar',
-        data: {
-          labels: Array(10).fill(0).map((_, i) => i),
-          datasets: [
-            { label: 'AS', data: Array(10).fill(0).map((_, i) => digitDist[0].filter(d => d === i).length / numbers.length * 100), backgroundColor: '#3b82f6' },
-            { label: 'KOP', data: Array(10).fill(0).map((_, i) => digitDist[1].filter(d => d === i).length / numbers.length * 100), backgroundColor: '#ef4444' },
-            { label: 'KEPALA', data: Array(10).fill(0).map((_, i) => digitDist[2].filter(d => d === i).length / numbers.length * 100), backgroundColor: '#10b981' },
-            { label: 'EKOR', data: Array(10).fill(0).map((_, i) => digitDist[3].filter(d => d === i).length / numbers.length * 100), backgroundColor: '#f59e0b' }
-          ]
-        },
-        options: { scales: { y: { beginAtZero: true, max: 100, title: { display: true, text: 'Persentase (%)' } } } }
-      });
+      const digitChartData = {
+        labels: Array(10).fill(0).map((_, i) => i),
+        datasets: [
+          { label: 'AS', data: digitDist[0].map(d => (d / totalEntries) * 100), backgroundColor: '#3b82f6' },
+          { label: 'KOP', data: digitDist[1].map(d => (d / totalEntries) * 100), backgroundColor: '#ef4444' },
+          { label: 'KEPALA', data: digitDist[2].map(d => (d / totalEntries) * 100), backgroundColor: '#10b981' },
+          { label: 'EKOR', data: digitDist[3].map(d => (d / totalEntries) * 100), backgroundColor: '#f59e0b' }
+        ]
+      };
       
-      // Grafik Shio
-      const shioCtx = document.getElementById('shioChart').getContext('2d');
-      new Chart(shioCtx, {
-        type: 'bar',
-        data: {
-          labels: Object.values(shioTable),
-          datasets: [{ label: 'Distribusi Shio (%)', data: shioCount.map(c => c / numbers.length * 100), backgroundColor: '#8b5cf6' }]
-        },
-        options: { scales: { y: { beginAtZero: true, max: 100, title: { display: true, text: 'Persentase (%)' } } } }
-      });
+      const monthlyChartData = {
+        labels: Object.keys(monthlyTrend),
+        datasets: [
+          { label: 'Besar (%)', data: Object.values(monthlyTrend).map(d => (d.besar / (d.besar + d.kecil)) * 100), borderColor: '#3b82f6', fill: false },
+          { label: 'Kecil (%)', data: Object.values(monthlyTrend).map(d => (d.kecil / (d.besar + d.kecil)) * 100), borderColor: '#ef4444', fill: false }
+        ]
+      };
       
-      // Grafik tren bulanan
-      const monthlyCtx = document.getElementById('monthlyTrendChart').getContext('2d');
-      new Chart(monthlyCtx, {
+      if (window.digitChart) window.digitChart.destroy();
+      if (window.monthlyChart) window.monthlyChart.destroy();
+      window.digitChart = new Chart(document.getElementById('digitChart').getContext('2d'), {
+        type: 'bar',
+        data: digitChartData,
+        options: {
+          scales: { y: { beginAtZero: true, max: 100, title: { display: true, text: 'Persentase (%)' } } },
+          plugins: { tooltip: { callbacks: { label: (context) => `${context.dataset.label}: ${context.parsed.y.toFixed(1)}%` } } }
+        }
+      });
+      window.monthlyChart = new Chart(document.getElementById('monthlyTrendChart').getContext('2d'), {
         type: 'line',
-        data: {
-          labels: Object.keys(monthlyTrend),
-          datasets: [
-            { label: 'Besar (%)', data: Object.values(monthlyTrend).map(d => (d.besar / (d.besar + d.kecil)) * 100), borderColor: '#3b82f6', fill: false },
-            { label: 'Kecil (%)', data: Object.values(monthlyTrend).map(d => (d.kecil / (d.besar + d.kecil)) * 100), borderColor: '#ef4444', fill: false }
-          ]
-        },
-        options: { scales: { y: { beginAtZero: true, max: 100, title: { display: true, text: 'Persentase (%)' } } } }
+        data: monthlyChartData,
+        options: {
+          scales: { y: { beginAtZero: true, max: 100, title: { display: true, text: 'Persentase (%)' } }, x: { title: { display: true, text: 'Bulan' } } },
+          plugins: { tooltip: { callbacks: { label: (context) => `${context.dataset.label}: ${context.parsed.y.toFixed(1)}%` } } }
+        }
       });
       
-      // Grafik Colok Naga
-      const colokNagaCtx = document.getElementById('colokNagaChart').getContext('2d');
-      new Chart(colokNagaCtx, {
-        type: 'bar',
-        data: {
-          labels: Array.from(colokNagaCombinations.keys()),
-          datasets: [{
-            label: 'Frekuensi Colok Naga',
-            data: Array.from(colokNagaCombinations.values()),
-            backgroundColor: '#10b981'
-          }]
-        },
-        options: { scales: { y: { beginAtZero: true, title: { display: true, text: 'Frekuensi' } } } }
-      });
-      
+      statsCache = { stats, digitChart: { data: digitChartData }, monthlyChart: { data: monthlyChartData }, numbersLength: numbers.length };
       toggleLoading(false);
     }
-    
-    // Ekspor data
-    function exportData() {
-      const csvContent = [
-        'date,first,second,third',
-        ...Array.from({ length: Math.floor(numbers.length / 3) }, (_, i) => 
-          `${dates[i] || 'N/A'},${numbers[i * 3]},${numbers[i * 3 + 1]},${numbers[i * 3 + 2]}`
-        ).join('\n')
-      ].join('\n');
-      const blob = new Blob([csvContent], { type: 'text/csv' });
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'exported_data.csv';
-      a.click();
-      window.URL.revokeObjectURL(url);
-    }
-    
-    // Model Transformer (Menggunakan Web Worker)
-    let model;
-    async function trainModel() {
-      if (numbers.length < 20) {
-        alert('Masukkan minimal 20 data untuk melatih model!');
-        return;
-      }
 
-      toggleLoading(true);
-      const worker = new Worker('/trainWorker.js');
-      worker.postMessage({ numbers });
-      document.getElementById('predictionOutput').innerHTML = 'Melatih model... Mohon tunggu.';
-
-      worker.onmessage = async (event) => {
-        if (event.data.status === 'success') {
-          model = await tf.loadLayersModel('indexeddb://4d-model');
-          document.getElementById('predictionOutput').innerHTML = 'Model telah dilatih dan disimpan!';
-          toggleLoading(false);
-        }
-      };
-
-      worker.onerror = (error) => {
-        console.error('Error in Web Worker:', error);
-        document.getElementById('predictionOutput').innerHTML = 'Gagal melatih model. Coba lagi.';
-        toggleLoading(false);
-      };
-    }
-    
-    // Prediksi angka
-    async function predictNumber() {
-      if (!model) {
-        try {
-          model = await tf.loadLayersModel('indexeddb://4d-model');
-        } catch (e) {
-          alert('Latih model terlebih dahulu!');
-          return;
-        }
-      }
-      
-      toggleLoading(true);
-      const lastTen = numbers.slice(-30, -10).map(n => {
-        const digits = n.toString().padStart(4, '0').split('').map(Number);
-        return digits.map(d => d / 9);
-      });
-      const input = tf.tensor2d([lastTen.flat()], [1, 40]); // 10 * 4 digits
-      const prediction = model.predict(input);
-      const predictedDigits = (await prediction.data()).map(d => Math.round(d * 9));
-      const predictedNumber = predictedDigits.map(d => d.toString()).join('');
-      
-      const lastTwo = parseInt(predictedDigits.slice(2).join('')) % 12;
-      const shio = shioTable[lastTwo];
-      
-      document.getElementById('predictionOutput').innerHTML = `
-        Prediksi Angka: ${predictedNumber}<br>
-        Shio: ${shio}<br>
-        Kategori EKOR: ${predictedDigits[3] >= 5 ? 'Besar' : 'Kecil'}, ${predictedDigits[3] % 2 === 0 ? 'Genap' : 'Ganjil'}
-      `;
-      
-      input.dispose();
-      prediction.dispose();
-      toggleLoading(false);
-    }
-    
-    // Service Worker dengan Workbox
-    if ('serviceWorker' in navigator) {
-      const wb = new Workbox('/sw.js');
-      wb.register();
-    }
-    
-    // Notifikasi pengingat undian
-    if (Notification.permission === 'granted') {
-      scheduleNotifications();
-    } else if (Notification.permission !== 'denied') {
-      Notification.requestPermission().then(permission => {
-        if (permission === 'granted') scheduleNotifications();
-      });
-    }
-    
-    function scheduleNotifications() {
-      const now = new Date();
-      const days = ['Sunday', 'Wednesday', 'Saturday'];
-      days.forEach(day => {
-        const nextDraw = new Date(now);
-        nextDraw.setDate(now.getDate() + (days.indexOf(day) - now.getDay() + 7) % 7);
-        nextDraw.setHours(18, 0, 0, 0);
-        if (nextDraw > now) {
-          setTimeout(() => {
-            new Notification('Pengingat Undian 4D', {
-              body: `Undian 4D Singapore akan berlangsung hari ini (${day}) pukul 18:00!`,
-              icon: '/icon.png'
-            });
-          }, nextDraw - now);
-        }
-      });
-    }
+    // Fungsi placeholder untuk impor CSV, tambah manual, ekspor, pelatihan, dan prediksi
+    function importCSV() { /* Logika impor CSV */ analyzeStats(); }
+    function addManual() { /* Logika tambah manual */ analyzeStats(); }
+    function exportData() { /* Logika ekspor */ }
+    function trainModel() { /* Logika pelatihan */ }
+    function predict() { /* Logika prediksi */ }
   </script>
 </body>
 </html>
