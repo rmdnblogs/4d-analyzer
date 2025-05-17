@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import pandas as pd
 import numpy as np
 from io import StringIO
-import tensorflow as tf
+from sklearn.linear_model import LinearRegression
 
 app = FastAPI()
 
@@ -15,7 +15,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# In-memory storage for simplicity (replace with PostgreSQL in production)
 historical_data = {"numbers": [], "dates": []}
 
 @app.post("/import-csv")
@@ -83,21 +82,18 @@ async def predict():
     if not numbers:
         return {"error": "No data available"}
     
-    # Simplified prediction (replace with trained model in production)
     last_numbers = numbers[-30:] if len(numbers) >= 30 else numbers
     normalized = [[int(d) / 9 for d in str(num).zfill(4)] for num in last_numbers]
     input_data = np.array([np.array(normalized).flatten()])
     
-    model = tf.keras.Sequential([
-        tf.keras.layers.Dense(64, activation='relu', input_shape=(len(normalized) * 4,)),
-        tf.keras.layers.Dense(4, activation='linear')
-    ])
-    model.compile(optimizer='adam', loss='mse')
+    model = LinearRegression()
+    target = np.array(normalized)[:, -1]  # Ambil digit terakhir sebagai target
+    model.fit(input_data[:-1], target[:-1])  # Latih model
     
     predictions = []
     for _ in range(3):
-        pred = model.predict(input_data)[0]
-        pred_digits = [round(d * 9) for d in pred]
+        pred = model.predict(input_data[-1].reshape(1, -1))[0]
+        pred_digits = [round(pred * 9) for _ in range(4)]  # Sederhana, hanya untuk contoh
         pred_number = ''.join(map(str, pred_digits))
         last_two = int(''.join(map(str, pred_digits[2:]))) % 12
         shio = ["Tikus", "Kerbau", "Macan", "Kelinci", "Naga", "Ular", "Kuda", "Kambing", "Monyet", "Ayam", "Anjing", "Babi"][last_two]

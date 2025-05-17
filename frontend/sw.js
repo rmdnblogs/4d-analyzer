@@ -37,7 +37,7 @@ registerRoute(
   })
 );
 
-// Tambahkan caching untuk API backend (opsional)
+// Cache untuk API backend
 registerRoute(
   ({ url }) => url.origin === 'http://localhost:8000' && url.pathname.startsWith('/'),
   new StaleWhileRevalidate({
