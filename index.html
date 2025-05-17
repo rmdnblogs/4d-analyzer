@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>4D Singapore Analyzer</title>
+  <title>4D Singapore Advanced Analyzer</title>
   <meta name="description" content="PWA untuk analisis statistik dan prediksi 4D Singapore">
   <meta name="theme-color" content="#1e40af">
   <link rel="manifest" href="/manifest.json">
@@ -28,15 +28,12 @@
     .loading.visible {
       display: block;
     }
-    canvas {
-      max-height: 300px;
-    }
   </style>
 </head>
 <body class="bg-gray-100 font-sans">
-  <div id="loading" class="loading">Memproses data...</div>
+  <div id="loading" class="loading">Memproses data... Mohon tunggu.</div>
   <div class="container mx-auto p-4">
-    <h1 class="text-3xl font-bold text-center text-blue-800 mb-6">4D Singapore Analyzer</h1>
+    <h1 class="text-3xl font-bold text-center text-blue-800 mb-6">4D Singapore Advanced Analyzer</h1>
     
     <!-- Input Data -->
     <div class="bg-white p-6 rounded-lg shadow-md mb-6">
@@ -56,54 +53,48 @@
     
     <!-- Analisis Statistik -->
     <div class="bg-white p-6 rounded-lg shadow-md mb-6">
-      <h2 class="text-xl font-semibold mb-4">Hasil Analisis</h2>
-      <button id="exportBtn" onclick="exportData()" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 mb-4">Ekspor Data</button>
-      <p id="statsOutput" class="mb-4 text-lg"></p>
-      <div class="mb-6">
-        <h3 class="text-lg font-semibold mb-2">Distribusi Digit</h3>
-        <canvas id="digitChart" class="w-full"></canvas>
-      </div>
-      <div>
-        <h3 class="text-lg font-semibold mb-2">Tren Bulanan (Besar/Kecil)</h3>
-        <canvas id="monthlyTrendChart" class="w-full"></canvas>
-      </div>
+      <h2 class="text-xl font-semibold mb-4">Hasil Analisis Statistik</h2>
+      <p id="statsOutput" class="mb-4"></p>
+      <canvas id="digitChart" class="w-full h-64 mb-4"></canvas>
+      <canvas id="shioChart" class="w-full h-64"></canvas>
     </div>
     
     <!-- Prediksi ML -->
     <div class="bg-white p-6 rounded-lg shadow-md">
-      <h2 class="text-xl font-semibold mb-4">Prediksi Angka</h2>
+      <h2 class="text-xl font-semibold mb-4">Prediksi Machine Learning</h2>
       <button onclick="trainModel()" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 mb-4">Latih Model</button>
-      <button onclick="predictNumber()" class="bg-purple-500 text-white px-4 py-2 rounded hover:bg-purple-600 mb-4">Prediksi</button>
-      <p id="predictionOutput" class="text-lg"></p>
+      <button onclick="predictNumber()" class="bg-purple-500 text-white px-4 py-2 rounded hover:bg-purple-600 mb-4">Prediksi Angka</button>
+      <p id="predictionOutput"></p>
     </div>
   </div>
 
   <script>
     let numbers = [];
     let dates = [];
-    let statsCache = null;
     const shioTable = {
       0: 'Tikus', 1: 'Kerbau', 2: 'Macan', 3: 'Kelinci', 4: 'Naga', 5: 'Ular',
       6: 'Kuda', 7: 'Kambing', 8: 'Monyet', 9: 'Ayam', 10: 'Anjing', 11: 'Babi'
     };
     
+    // Fungsi untuk menampilkan/sembunyikan loading
     function toggleLoading(show) {
       document.getElementById('loading').classList.toggle('visible', show);
     }
     
+    // Inisialisasi IndexedDB
     async function loadNumbers() {
       const storedData = (await idbKeyval.get('historicalData')) || { numbers: [], dates: [] };
-      numbers = storedData.numbers || [];
-      dates = storedData.dates || [];
-      document.getElementById('numberList').innerHTML = '';
-      for (let i = 0; i < numbers.length; i += 3) {
-        const date = dates[Math.floor(i / 3)] || 'N/A';
-        document.getElementById('numberList').innerHTML += `<li>${date}: ${numbers.slice(i, i + 3).map(n => n.toString().padStart(4, '0')).join(', ')}</li>`;
-      }
+      numbers = storedData.numbers;
+      dates = storedData.dates;
+      numbers.forEach((num, index) => {
+        const date = dates[index] || 'N/A';
+        document.getElementById('numberList').innerHTML += `<li>${date}: ${num.toString().padStart(4, '0')}</li>`;
+      });
       if (numbers.length > 0) analyzeStats();
     }
     loadNumbers();
     
+    // Impor dari CSV
     async function importCSV() {
       const fileInput = document.getElementById('csvInput');
       const file = fileInput.files[0];
@@ -117,49 +108,36 @@
       const lines = text.split('\n').filter(line => line.trim());
       const newNumbers = [];
       const newDates = [];
-      let errorCount = 0;
       
+      // Lewati header
       for (let i = 1; i < lines.length; i++) {
-        const [date, first, second, third] = lines[i].split(',').map(s => s.trim());
-        if (date && first && second && third && /^\d{2}\/\d{2}\/\d{4}$/.test(date) && /^\d{4}$/.test(first) && /^\d{4}$/.test(second) && /^\d{4}$/.test(third)) {
-          newDates.push(date);
-          newNumbers.push(parseInt(first), parseInt(second), parseInt(third));
-        } else {
-          errorCount++;
+        const [date, number] = lines[i].split(',');
+        if (number && /^\d{4}$/.test(number.trim())) {
+          newNumbers.push(parseInt(number.trim()));
+          newDates.push(date ? date.trim() : 'N/A');
         }
       }
 
-      if (newNumbers.length === 0) {
-        toggleLoading(false);
-        alert('Tidak ada data valid yang diimpor. Pastikan format CSV sesuai.');
-        return;
-      }
-
-      numbers = newNumbers;
-      dates = newDates;
-      statsCache = null;
+      numbers = [...numbers, ...newNumbers];
+      dates = [...dates, ...newDates];
       await idbKeyval.set('historicalData', { numbers, dates });
-      console.log('Data saved:', { numbers, dates }); // Debugging
       
       document.getElementById('numberList').innerHTML = '';
-      for (let i = 0; i < numbers.length; i += 3) {
-        const date = dates[Math.floor(i / 3)] || 'N/A';
-        document.getElementById('numberList').innerHTML += `<li>${date}: ${numbers.slice(i, i + 3).map(n => n.toString().padStart(4, '0')).join(', ')}</li>`;
-      }
+      numbers.forEach((num, index) => {
+        const date = dates[index] || 'N/A';
+        document.getElementById('numberList').innerHTML += `<li>${date}: ${num.toString().padStart(4, '0')}</li>`;
+      });
       
       toggleLoading(false);
-      if (errorCount > 0) {
-        alert(`${errorCount} baris gagal diimpor karena format salah. Pastikan tanggal dalam format DD/MM/YYYY dan semua angka adalah 4 digit.`);
-      }
       analyzeStats();
     }
     
+    // Tambah angka manual
     async function addNumber() {
       const input = document.getElementById('numberInput').value;
       if (/^\d{4}$/.test(input)) {
         numbers.push(parseInt(input));
         dates.push(new Date().toISOString().split('T')[0]);
-        statsCache = null;
         await idbKeyval.set('historicalData', { numbers, dates });
         document.getElementById('numberList').innerHTML += `<li>${dates[dates.length - 1]}: ${input}</li>`;
         document.getElementById('numberInput').value = '';
@@ -169,137 +147,116 @@
       }
     }
     
+    // Analisis statistik kompleks
     function analyzeStats() {
       if (numbers.length === 0) return;
       
-      if (statsCache && statsCache.numbersLength === numbers.length) {
-        document.getElementById('statsOutput').innerHTML = statsCache.stats;
-        if (window.digitChart) window.digitChart.data = statsCache.digitChart.data;
-        if (window.monthlyChart) window.monthlyChart.data = statsCache.monthlyChart.data;
-        window.digitChart.update();
-        window.monthlyChart.update();
-        return;
-      }
-      
       toggleLoading(true);
       
-      const digitDist = Array(4).fill().map(() => Array(10).fill(0));
-      let besar = 0, kecil = 0, ganjil = 0, genap = 0;
-      const monthlyTrend = {};
+      // Distribusi per posisi
+      const digitDist = [[], [], [], []]; // AS, KOP, KEPALA, EKOR
+      const shioCount = Array(12).fill(0);
+      let besar = 0, kecil = 0, ganjil = 0, genap = 0, tengah = 0, tepi = 0;
       
-      for (let i = 0; i < numbers.length; i++) {
-        const digits = numbers[i].toString().padStart(4, '0').split('').map(Number);
-        const date = new Date(dates[Math.floor(i / 3)].split('/').reverse().join('-') || '2025-01-01');
-        const month = date.toLocaleString('default', { month: 'long', year: 'numeric' });
+      numbers.forEach(num => {
+        const digits = num.toString().padStart(4, '0').split('').map(Number);
+        digitDist[0].push(digits[0]); // AS
+        digitDist[1].push(digits[1]); // KOP
+        digitDist[2].push(digits[2]); // KEPALA
+        digitDist[3].push(digits[3]); // EKOR
         
-        digits.forEach((digit, pos) => digitDist[pos][digit]++);
-        
+        // Besar/Kecil, Ganjil/Genap (berdasarkan EKOR)
         const lastDigit = digits[3];
         if (lastDigit >= 5) besar++;
         else kecil++;
         if (lastDigit % 2 === 0) genap++;
         else ganjil++;
         
-        monthlyTrend[month] = monthlyTrend[month] || { besar: 0, kecil: 0 };
-        if (lastDigit >= 5) monthlyTrend[month].besar++;
-        else monthlyTrend[month].kecil++;
-      }
+        // Tengah/Tepi (berdasarkan 2 digit terakhir)
+        const lastTwo = parseInt(digits.slice(2).join(''));
+        if (lastTwo >= 25 && lastTwo <= 74) tengah++;
+        else tepi++;
+        
+        // Shio
+        const shioIndex = lastTwo % 12;
+        shioCount[shioIndex]++;
+      });
       
-      const totalEntries = numbers.length;
+      // Output statistik
       const stats = `
-        Total Angka: ${totalEntries}<br>
-        Besar (5-9): ${((besar / totalEntries) * 100).toFixed(1)}%<br>
-        Kecil (0-4): ${((kecil / totalEntries) * 100).toFixed(1)}%<br>
-        Ganjil: ${((ganjil / totalEntries) * 100).toFixed(1)}%<br>
-        Genap: ${((genap / totalEntries) * 100).toFixed(1)}%
+        Total Data: ${numbers.length}<br>
+        Besar (5-9): ${((besar / numbers.length) * 100).toFixed(2)}%<br>
+        Kecil (0-4): ${((kecil / numbers.length) * 100).toFixed(2)}%<br>
+        Ganjil: ${((ganjil / numbers.length) * 100).toFixed(2)}%<br>
+        Genap: ${((genap / numbers.length) * 100).toFixed(2)}%<br>
+        Tengah (25-74): ${((tengah / numbers.length) * 100).toFixed(2)}%<br>
+        Tepi (00-24, 75-99): ${((tepi / numbers.length) * 100).toFixed(2)}%
       `;
       document.getElementById('statsOutput').innerHTML = stats;
       
-      const digitChartData = {
-        labels: Array(10).fill(0).map((_, i) => i),
-        datasets: [
-          { label: 'AS', data: digitDist[0].map(d => (d / totalEntries) * 100), backgroundColor: '#3b82f6' },
-          { label: 'KOP', data: digitDist[1].map(d => (d / totalEntries) * 100), backgroundColor: '#ef4444' },
-          { label: 'KEPALA', data: digitDist[2].map(d => (d / totalEntries) * 100), backgroundColor: '#10b981' },
-          { label: 'EKOR', data: digitDist[3].map(d => (d / totalEntries) * 100), backgroundColor: '#f59e0b' }
-        ]
-      };
-      
-      const monthlyChartData = {
-        labels: Object.keys(monthlyTrend),
-        datasets: [
-          { label: 'Besar (%)', data: Object.values(monthlyTrend).map(d => (d.besar / (d.besar + d.kecil)) * 100), borderColor: '#3b82f6', fill: false },
-          { label: 'Kecil (%)', data: Object.values(monthlyTrend).map(d => (d.kecil / (d.besar + d.kecil)) * 100), borderColor: '#ef4444', fill: false }
-        ]
-      };
-      
-      if (window.digitChart) window.digitChart.destroy();
-      if (window.monthlyChart) window.monthlyChart.destroy();
-      window.digitChart = new Chart(document.getElementById('digitChart').getContext('2d'), {
+      // Grafik distribusi digit per posisi
+      const digitCtx = document.getElementById('digitChart').getContext('2d');
+      new Chart(digitCtx, {
         type: 'bar',
-        data: digitChartData,
-        options: {
-          scales: { y: { beginAtZero: true, max: 100, title: { display: true, text: 'Persentase (%)' } } },
-          plugins: { tooltip: { callbacks: { label: (context) => `${context.dataset.label}: ${context.parsed.y.toFixed(1)}%` } } }
-        }
-      });
-      window.monthlyChart = new Chart(document.getElementById('monthlyTrendChart').getContext('2d'), {
-        type: 'line',
-        data: monthlyChartData,
-        options: {
-          scales: { y: { beginAtZero: true, max: 100, title: { display: true, text: 'Persentase (%)' } }, x: { title: { display: true, text: 'Bulan' } } },
-          plugins: { tooltip: { callbacks: { label: (context) => `${context.dataset.label}: ${context.parsed.y.toFixed(1)}%` } } }
-        }
+        data: {
+          labels: Array(10).fill(0).map((_, i) => i),
+          datasets: [
+            { label: 'AS', data: Array(10).fill(0).map((_, i) => digitDist[0].filter(d => d === i).length / numbers.length * 100), backgroundColor: '#3b82f6' },
+            { label: 'KOP', data: Array(10).fill(0).map((_, i) => digitDist[1].filter(d => d === i).length / numbers.length * 100), backgroundColor: '#ef4444' },
+            { label: 'KEPALA', data: Array(10).fill(0).map((_, i) => digitDist[2].filter(d => d === i).length / numbers.length * 100), backgroundColor: '#10b981' },
+            { label: 'EKOR', data: Array(10).fill(0).map((_, i) => digitDist[3].filter(d => d === i).length / numbers.length * 100), backgroundColor: '#f59e0b' }
+          ]
+        },
+        options: { scales: { y: { beginAtZero: true, max: 100, title: { display: true, text: 'Persentase (%)' } } } }
       });
       
-      statsCache = { stats, digitChart: { data: digitChartData }, monthlyChart: { data: monthlyChartData }, numbersLength: numbers.length };
+      // Grafik Shio
+      const shioCtx = document.getElementById('shioChart').getContext('2d');
+      new Chart(shioCtx, {
+        type: 'bar',
+        data: {
+          labels: Object.values(shioTable),
+          datasets: [{
+            label: 'Distribusi Shio (%)',
+            data: shioCount.map(c => c / numbers.length * 100),
+            backgroundColor: '#8b5cf6'
+          }]
+        },
+        options: { scales: { y: { beginAtZero: true, max: 100, title: { display: true, text: 'Persentase (%)' } } } }
+      });
+      
       toggleLoading(false);
     }
     
-    function exportData() {
-      const csvContent = [
-        'date,first,second,third',
-        ...Array.from({ length: Math.floor(numbers.length / 3) }, (_, i) => 
-          `${dates[i] || 'N/A'},${numbers[i * 3]},${numbers[i * 3 + 1]},${numbers[i * 3 + 2]}`
-        ).join('\n')
-      ].join('\n');
-      const blob = new Blob([csvContent], { type: 'text/csv' });
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'exported_data.csv';
-      a.click();
-      window.URL.revokeObjectURL(url);
-    }
-    
+    // Model Machine Learning (Menggunakan Web Worker)
     let model;
     async function trainModel() {
-      const minData = Math.max(30, numbers.length);
-      if (numbers.length < 10) {
-        alert('Masukkan minimal 10 angka untuk melatih model!');
+      if (numbers.length < 20) {
+        alert('Masukkan minimal 20 data untuk melatih model!');
         return;
       }
 
       toggleLoading(true);
       const worker = new Worker('/trainWorker.js');
-      worker.postMessage({ numbers, minData });
-      document.getElementById('predictionOutput').innerHTML = 'Melatih model...';
+      worker.postMessage({ numbers });
+      document.getElementById('predictionOutput').innerHTML = 'Melatih model... Mohon tunggu.';
 
       worker.onmessage = async (event) => {
         if (event.data.status === 'success') {
           model = await tf.loadLayersModel('indexeddb://4d-model');
-          document.getElementById('predictionOutput').innerHTML = 'Model telah dilatih!';
+          document.getElementById('predictionOutput').innerHTML = 'Model telah dilatih dan disimpan!';
           toggleLoading(false);
         }
       };
 
       worker.onerror = (error) => {
         console.error('Error in Web Worker:', error);
-        document.getElementById('predictionOutput').innerHTML = 'Gagal melatih model.';
+        document.getElementById('predictionOutput').innerHTML = 'Gagal melatih model. Coba lagi.';
         toggleLoading(false);
       };
     }
     
+    // Prediksi angka
     async function predictNumber() {
       if (!model) {
         try {
@@ -311,12 +268,11 @@
       }
       
       toggleLoading(true);
-      const windowSize = Math.min(numbers.length, 30);
-      const lastNumbers = numbers.slice(-windowSize).map(n => {
+      const lastTen = numbers.slice(-10).map(n => {
         const digits = n.toString().padStart(4, '0').split('').map(Number);
         return digits.map(d => d / 9);
       });
-      const input = tf.tensor2d([lastNumbers.flat()], [1, windowSize * 4]);
+      const input = tf.tensor3d([lastTen], [1, 10, 4]);
       const prediction = model.predict(input);
       const predictedDigits = (await prediction.data()).map(d => Math.round(d * 9));
       const predictedNumber = predictedDigits.map(d => d.toString()).join('');
@@ -325,9 +281,9 @@
       const shio = shioTable[lastTwo];
       
       document.getElementById('predictionOutput').innerHTML = `
-        Prediksi Angka: <span class="font-bold">${predictedNumber}</span><br>
+        Prediksi Angka: ${predictedNumber}<br>
         Shio: ${shio}<br>
-        EKOR: ${predictedDigits[3] >= 5 ? 'Besar' : 'Kecil'}, ${predictedDigits[3] % 2 === 0 ? 'Genap' : 'Ganjil'}
+        Kategori EKOR: ${predictedDigits[3] >= 5 ? 'Besar' : 'Kecil'}, ${predictedDigits[3] % 2 === 0 ? 'Genap' : 'Ganjil'}
       `;
       
       input.dispose();
@@ -335,11 +291,13 @@
       toggleLoading(false);
     }
     
+    // Service Worker dengan Workbox
     if ('serviceWorker' in navigator) {
       const wb = new Workbox('/sw.js');
       wb.register();
     }
     
+    // Notifikasi pengingat undian
     if (Notification.permission === 'granted') {
       scheduleNotifications();
     } else if (Notification.permission !== 'denied') {

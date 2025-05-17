@@ -1,37 +1,42 @@
-importScripts('https://storage.googleapis.com/workbox-cdn/releases/6.5.4/workbox-sw.js');
+importScripts('https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js');
 
-workbox.setConfig({ debug: false });
+self.onmessage = async (event) => {
+  const { numbers } = event.data;
 
-const { precacheAndRoute } = workbox.precaching;
-const { registerRoute } = workbox.routing;
-const { CacheFirst, StaleWhileRevalidate } = workbox.strategies;
-const { ExpirationPlugin } = workbox.expiration;
+  // Buat model yang lebih besar
+  const model = tf.sequential();
+  model.add(tf.layers.lstm({ units: 64, inputShape: [10, 4], returnSequences: true }));
+  model.add(tf.layers.lstm({ units: 32 }));
+  model.add(tf.layers.dense({ units: 4, activation: 'linear' }));
+  model.compile({ optimizer: 'adam', loss: 'meanSquaredError' });
 
-// Precache file utama
-precacheAndRoute([
-  { url: '/', revision: '1' },
-  { url: '/index.html', revision: '1' },
-  { url: '/trainWorker.js', revision: '1' },
-  { url: '/data/historical_data.csv', revision: '1' },
-  { url: '/icon-192x192.png', revision: '1' },
-  { url: '/icon-512x512.png', revision: '1' },
-  { url: '/manifest.json', revision: '1' }
-]);
+  // Normalisasi data
+  const normalized = numbers.map(n => {
+    const digits = n.toString().padStart(4, '0').split('').map(Number);
+    return digits.map(d => d / 9);
+  });
+  const xs = [], ys = [];
+  for (let i = 0; i < normalized.length - 10; i++) {
+    xs.push(normalized.slice(i, i + 10));
+    ys.push(normalized[i + 10]);
+  }
 
-// Cache CDN eksternal
-registerRoute(
-  ({ url }) => url.origin === 'https://cdn.tailwindcss.com' || url.origin === 'https://cdn.jsdelivr.net' || url.origin === 'https://unpkg.com',
-  new StaleWhileRevalidate({
-    cacheName: 'cdn-cache',
-    plugins: [new ExpirationPlugin({ maxAgeSeconds: 7 * 24 * 60 * 60 })]
-  })
-);
+  const xsTensor = tf.tensor3d(xs, [xs.length, 10, 4]);
+  const ysTensor = tf.tensor2d(ys, [ys.length, 4]);
 
-// Cache dinamis untuk data pengguna
-registerRoute(
-  ({ request }) => request.destination === 'image' || request.destination === 'script',
-  new CacheFirst({
-    cacheName: 'dynamic-cache',
-    plugins: [new ExpirationPlugin({ maxEntries: 50, maxAgeSeconds: 30 * 24 * 60 * 60 })]
-  })
-);
+  // Latih model dengan batch
+  await model.fit(xsTensor, ysTensor, {
+    epochs: 50,
+    batchSize: 64, // Batch lebih besar untuk data besar
+    shuffle: true
+  });
+
+  // Simpan model ke IndexedDB
+  await model.save('indexeddb://4d-model');
+
+  // Bersihkan tensor
+  xsTensor.dispose();
+  ysTensor.dispose();
+
+  self.postMessage({ status: 'success' });
+};
